@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { ZiweiChart } from '@/lib/ziwei/types';
+import { apiUrl } from '@/lib/api-base';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -41,7 +42,7 @@ export default function ChatPanel({ chart }: ChatPanelProps) {
     setLoading(true);
 
     try {
-      const res = await fetch('/api/interpret', {
+      const res = await fetch(apiUrl('/api/interpret'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ chart, messages: [...messages, userMsg] }),

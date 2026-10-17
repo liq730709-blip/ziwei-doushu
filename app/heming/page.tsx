@@ -1,4 +1,5 @@
 'use client';
+import { apiUrl } from '@/lib/api-base';
 import { useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import BirthForm, { type BirthFormState } from '@/components/BirthForm';
@@ -112,7 +113,7 @@ export default function HemingPage() {
       if (!chartA) setChartA(cA);
       if (!chartB) setChartB(cB);
 
-      const res = await fetch('/api/heming', {
+      const res = await fetch(apiUrl('/api/heming'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ chartA: cA, chartB: cB, question: q ?? undefined }),
