@@ -1145,7 +1145,7 @@ export default function HomePage() {
               return (
                 <a
                   key={s.key}
-                  href={ready ? '/chart' : undefined}
+                  href={ready ? (process.env.NEXT_PUBLIC_BASE_PATH || '') + '/chart' : undefined}
                   onClick={ready ? undefined : (e) => e.preventDefault()}
                   className="rounded-lg px-3 py-3 text-center transition-all"
                   style={{
