@@ -5,6 +5,7 @@ import type { BirthInfo } from '@/lib/ziwei/types';
 import { SHICHEN } from '@/lib/ziwei/constants';
 import { useTheme } from '@/components/ThemeProvider';
 import { PROVINCES } from '@/lib/ziwei/cities';
+import { lunarToSolar, lunarMonthDayCount, leapMonthOfLunarYear } from '@/lib/ziwei/lunar-solar';
 
 export interface BirthFormState {
   name: string;
@@ -18,6 +19,12 @@ export interface BirthFormState {
   city: string;
   longitude: number;
   gender: 'male' | 'female';
+  /** 输入历法：公历（默认）/ 农历。农历模式下 year/month/day 为换算后的公历日期 */
+  calendar?: 'solar' | 'lunar';
+  lunarYear?: string;
+  lunarMonth?: string;
+  lunarDay?: string;
+  lunarLeap?: boolean;
 }
 
 interface BirthFormProps {
@@ -30,6 +37,12 @@ interface BirthFormProps {
 }
 
 const SHICHEN_NAMES = ['子', '丑', '寅', '卯', '辰', '巳', '午', '未', '申', '酉', '戌', '亥'];
+const LUNAR_MONTH_NAMES = ['正', '二', '三', '四', '五', '六', '七', '八', '九', '十', '冬', '腊'];
+const LUNAR_DAY_NAMES = [
+  '初一', '初二', '初三', '初四', '初五', '初六', '初七', '初八', '初九', '初十',
+  '十一', '十二', '十三', '十四', '十五', '十六', '十七', '十八', '十九', '二十',
+  '廿一', '廿二', '廿三', '廿四', '廿五', '廿六', '廿七', '廿八', '廿九', '三十',
+];
 
 /** 根据北京时间 + 经度计算真太阳时时辰支 (0-11) */
 function calcTrueSolarBranch(clockHour: number, clockMinute: number, longitude: number): number {
@@ -63,14 +76,43 @@ export default function BirthForm({ onSubmit, loading, initialData, onFormSave, 
     city: initialData?.city ?? '',
     longitude: initialData?.longitude ?? 120,
     gender: initialData?.gender ?? 'male',
+    calendar: initialData?.calendar ?? 'solar',
+    lunarYear: initialData?.lunarYear ?? '',
+    lunarMonth: initialData?.lunarMonth ?? '',
+    lunarDay: initialData?.lunarDay ?? '',
+    lunarLeap: initialData?.lunarLeap ?? false,
   });
+  const isLunar = form.calendar === 'lunar';
 
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [submitAttempted, setSubmitAttempted] = useState(false);
 
+  // ─── 农历 → 公历换算（沿用引擎 lib/ziwei/lunar-solar.ts，含闰月校验） ───
+  const ly = parseInt(form.lunarYear || '') || 0;
+  const lm = parseInt(form.lunarMonth || '') || 0;
+  const ld = parseInt(form.lunarDay || '') || 0;
+  const lunarLeap = !!form.lunarLeap;
+  const lunarLeapOfYear = ly ? leapMonthOfLunarYear(ly) : 0;
+  const lunarSolar = isLunar && ly && lm && ld ? lunarToSolar(ly, lm, ld, lunarLeap) : null;
+  let lunarError = '';
+  if (isLunar && ly && lm) {
+    if (lunarLeap && lunarMonthDayCount(ly, lm, true) === 0) {
+      lunarError = `农历${ly}年没有闰${LUNAR_MONTH_NAMES[lm - 1]}月` + (lunarLeapOfYear ? `（当年闰${LUNAR_MONTH_NAMES[lunarLeapOfYear - 1]}月）` : '（当年无闰月）');
+    } else if (ld) {
+      const cnt = lunarMonthDayCount(ly, lm, lunarLeap);
+      if (cnt > 0 && ld > cnt) lunarError = `农历${ly}年${lunarLeap ? '闰' : ''}${LUNAR_MONTH_NAMES[lm - 1]}月只有${cnt}天，没有${LUNAR_DAY_NAMES[ld - 1]}`;
+      else if (!lunarSolar) lunarError = '该农历日期无法换算，请检查';
+    }
+  }
+
+  /** 实际用于排盘的公历日期字段（农历模式下为换算结果，不合法时为空） */
+  const effectiveForm = (): BirthFormState => isLunar
+    ? { ...form, year: lunarSolar ? String(lunarSolar.year) : '', month: lunarSolar ? String(lunarSolar.month) : '', day: lunarSolar ? String(lunarSolar.day) : '' }
+    : { ...form };
+
   // 表单状态变化时实时同步给父级（合盘等场景下父级靠这个收集双方数据）
   useEffect(() => {
-    onFormSave?.({ ...form });
+    onFormSave?.(effectiveForm());
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form]);
 
@@ -92,11 +134,16 @@ export default function BirthForm({ onSubmit, loading, initialData, onFormSave, 
   const shichenInfo = SHICHEN[branch];
 
   // ─── 校验逻辑 ───────────────────────────────────────────
-  const y = parseInt(form.year) || 0;
-  const m = parseInt(form.month) || 0;
-  const d = parseInt(form.day) || 0;
+  const y = isLunar ? (lunarSolar?.year ?? 0) : (parseInt(form.year) || 0);
+  const m = isLunar ? (lunarSolar?.month ?? 0) : (parseInt(form.month) || 0);
+  const d = isLunar ? (lunarSolar?.day ?? 0) : (parseInt(form.day) || 0);
 
-  const errors = {
+  const errors = isLunar ? {
+    year: !form.lunarYear ? '请选择农历年份' : '',
+    month: !form.lunarMonth ? '请选择农历月份' : '',
+    day: !form.lunarDay ? '请选择农历日期' : '',
+    lunar: lunarError,
+  } : {
     year: !form.year ? '请选择出生年份'
       : y < 1900 || y > 2026 ? '年份范围：1900–2026'
       : '',
@@ -104,12 +151,13 @@ export default function BirthForm({ onSubmit, loading, initialData, onFormSave, 
     day: !form.day ? '请选择日期'
       : form.year && form.month && !isValidDate(y, m, d) ? `${m}月没有${d}日`
       : '',
+    lunar: '',
   };
   const hasError = Object.values(errors).some(Boolean);
 
   // ─── 完成度（用于进度条） ────────────────────────────────
   const steps = [
-    !!form.year && !!form.month && !!form.day && !errors.year && !errors.month && !errors.day,
+    (isLunar ? !!lunarSolar : (!!form.year && !!form.month && !!form.day)) && !errors.year && !errors.month && !errors.day && !errors.lunar,
     !!form.province && !!form.city,
     form.unknownTime || (!!form.clockHour && !!form.clockMinute),
     true, // 性别有默认值
@@ -120,7 +168,9 @@ export default function BirthForm({ onSubmit, loading, initialData, onFormSave, 
   const showSummary = steps[0] && steps[2] && !hasError;
   const summaryText = showSummary
     ? [
-        `${y}年${m}月${d}日`,
+        isLunar
+          ? `农历${ly}年${lunarLeap ? '闰' : ''}${LUNAR_MONTH_NAMES[lm - 1]}月${LUNAR_DAY_NAMES[ld - 1]}（公历${y}年${m}月${d}日）`
+          : `${y}年${m}月${d}日`,
         form.city || (form.province ? form.province : ''),
         form.unknownTime ? '时辰不详' : `${SHICHEN_NAMES[branch]}时`,
         form.gender === 'male' ? '男' : '女',
@@ -144,7 +194,7 @@ export default function BirthForm({ onSubmit, loading, initialData, onFormSave, 
     setSubmitAttempted(true);
     setTouched({ year: true, month: true, day: true });
     if (hasError) return;
-    onFormSave?.({ ...form });
+    onFormSave?.(effectiveForm());
     onSubmit({ year: y, month: m, day: d, hour: branch, gender: form.gender, name: form.name || undefined, province: form.province || undefined, city: form.city || undefined, longitude: form.province ? form.longitude : undefined });
   };
 
@@ -241,51 +291,150 @@ export default function BirthForm({ onSubmit, loading, initialData, onFormSave, 
 
       {/* ── 出生日期 ── */}
       <div style={{ marginBottom: '16px' }}>
-        <label style={{ display: 'block', fontSize: '11px', color: labelClr, marginBottom: '6px', letterSpacing: '0.05em' }}>出生日期（公历）</label>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
-          <div>
-            <select
-              value={form.year}
-              onChange={e => { setForm({ ...form, year: e.target.value }); setTouched(t => ({ ...t, year: true })); }}
-              style={showErr('year') && errors.year ? errorInputStyle : inputStyle}
-              required
-            >
-              <option value="">年份</option>
-              {Array.from({ length: 127 }, (_, i) => 2026 - i).map(yr => (
-                <option key={yr} value={String(yr)}>{yr}</option>
-              ))}
-            </select>
-            <FieldError msg={showErr('year') ? errors.year : ''} />
-          </div>
-          <div>
-            <select
-              value={form.month}
-              onChange={e => { setForm({ ...form, month: e.target.value }); setTouched(t => ({ ...t, month: true })); }}
-              style={showErr('month') && errors.month ? errorInputStyle : inputStyle}
-              required
-            >
-              <option value="">月份</option>
-              {Array.from({ length: 12 }, (_, i) => i + 1).map(mo => (
-                <option key={mo} value={String(mo)}>{mo} 月</option>
-              ))}
-            </select>
-            <FieldError msg={showErr('month') ? errors.month : ''} />
-          </div>
-          <div>
-            <select
-              value={form.day}
-              onChange={e => { setForm({ ...form, day: e.target.value }); setTouched(t => ({ ...t, day: true })); }}
-              style={showErr('day') && errors.day ? errorInputStyle : inputStyle}
-              required
-            >
-              <option value="">日期</option>
-              {Array.from({ length: 31 }, (_, i) => i + 1).map(dy => (
-                <option key={dy} value={String(dy)}>{dy} 日</option>
-              ))}
-            </select>
-            <FieldError msg={showErr('day') ? errors.day : ''} />
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+          <label style={{ display: 'block', fontSize: '11px', color: labelClr, letterSpacing: '0.05em' }}>出生日期（{isLunar ? '农历' : '公历'}）</label>
+          <div role="group" aria-label="历法" style={{ display: 'flex', gap: '2px', padding: '2px', borderRadius: '10px', background: inputBg, border: `1px solid ${inputBorder}` }}>
+            {(['solar', 'lunar'] as const).map(c => {
+              const active = (form.calendar ?? 'solar') === c;
+              return (
+                <button
+                  key={c}
+                  type="button"
+                  data-calendar={c}
+                  aria-pressed={active}
+                  onClick={() => { setForm({ ...form, calendar: c }); setTouched({}); setSubmitAttempted(false); }}
+                  style={{
+                    padding: '3px 12px',
+                    borderRadius: '8px',
+                    fontSize: '11px',
+                    border: 'none',
+                    cursor: 'pointer',
+                    background: active ? (isDark ? 'rgba(212,168,67,0.22)' : 'rgba(180,120,20,0.14)') : 'transparent',
+                    color: active ? goldText : (isDark ? 'rgba(190,205,225,0.7)' : 'rgba(100,80,40,0.5)'),
+                    fontWeight: active ? 600 : 400,
+                    transition: 'all 0.2s',
+                  }}
+                >
+                  {c === 'solar' ? '公历' : '农历'}
+                </button>
+              );
+            })}
           </div>
         </div>
+        {!isLunar ? (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+            <div>
+              <select
+                value={form.year}
+                onChange={e => { setForm({ ...form, year: e.target.value }); setTouched(t => ({ ...t, year: true })); }}
+                style={showErr('year') && errors.year ? errorInputStyle : inputStyle}
+                required
+              >
+                <option value="">年份</option>
+                {Array.from({ length: 127 }, (_, i) => 2026 - i).map(yr => (
+                  <option key={yr} value={String(yr)}>{yr}</option>
+                ))}
+              </select>
+              <FieldError msg={showErr('year') ? errors.year : ''} />
+            </div>
+            <div>
+              <select
+                value={form.month}
+                onChange={e => { setForm({ ...form, month: e.target.value }); setTouched(t => ({ ...t, month: true })); }}
+                style={showErr('month') && errors.month ? errorInputStyle : inputStyle}
+                required
+              >
+                <option value="">月份</option>
+                {Array.from({ length: 12 }, (_, i) => i + 1).map(mo => (
+                  <option key={mo} value={String(mo)}>{mo} 月</option>
+                ))}
+              </select>
+              <FieldError msg={showErr('month') ? errors.month : ''} />
+            </div>
+            <div>
+              <select
+                value={form.day}
+                onChange={e => { setForm({ ...form, day: e.target.value }); setTouched(t => ({ ...t, day: true })); }}
+                style={showErr('day') && errors.day ? errorInputStyle : inputStyle}
+                required
+              >
+                <option value="">日期</option>
+                {Array.from({ length: 31 }, (_, i) => i + 1).map(dy => (
+                  <option key={dy} value={String(dy)}>{dy} 日</option>
+                ))}
+              </select>
+              <FieldError msg={showErr('day') ? errors.day : ''} />
+            </div>
+          </div>
+        ) : (
+          <div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+              <div>
+                <select
+                  name="lunarYear"
+                  value={form.lunarYear}
+                  onChange={e => { setForm({ ...form, lunarYear: e.target.value }); setTouched(t => ({ ...t, year: true })); }}
+                  style={showErr('year') && errors.year ? errorInputStyle : inputStyle}
+                  required
+                >
+                  <option value="">农历年</option>
+                  {Array.from({ length: 127 }, (_, i) => 2026 - i).map(yr => (
+                    <option key={yr} value={String(yr)}>{yr}</option>
+                  ))}
+                </select>
+                <FieldError msg={showErr('year') ? errors.year : ''} />
+              </div>
+              <div>
+                <select
+                  name="lunarMonth"
+                  value={form.lunarMonth}
+                  onChange={e => { setForm({ ...form, lunarMonth: e.target.value }); setTouched(t => ({ ...t, month: true })); }}
+                  style={showErr('month') && errors.month ? errorInputStyle : inputStyle}
+                  required
+                >
+                  <option value="">农历月</option>
+                  {Array.from({ length: 12 }, (_, i) => i + 1).map(mo => (
+                    <option key={mo} value={String(mo)}>{LUNAR_MONTH_NAMES[mo - 1]}月（{mo}）</option>
+                  ))}
+                </select>
+                <FieldError msg={showErr('month') ? errors.month : ''} />
+              </div>
+              <div>
+                <select
+                  name="lunarDay"
+                  value={form.lunarDay}
+                  onChange={e => { setForm({ ...form, lunarDay: e.target.value }); setTouched(t => ({ ...t, day: true })); }}
+                  style={showErr('day') && errors.day ? errorInputStyle : inputStyle}
+                  required
+                >
+                  <option value="">农历日</option>
+                  {Array.from({ length: 30 }, (_, i) => i + 1).map(dy => (
+                    <option key={dy} value={String(dy)}>{LUNAR_DAY_NAMES[dy - 1]}（{dy}）</option>
+                  ))}
+                </select>
+                <FieldError msg={showErr('day') ? errors.day : ''} />
+              </div>
+            </div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '7px', marginTop: '8px', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                name="lunarLeap"
+                checked={lunarLeap}
+                onChange={e => setForm({ ...form, lunarLeap: e.target.checked })}
+                style={{ width: '14px', height: '14px', borderRadius: '4px', cursor: 'pointer' }}
+              />
+              <span style={{ fontSize: '10px', color: isDark ? 'rgba(165,185,210,0.7)' : 'rgba(140,100,20,0.45)' }}>
+                闰月{ly ? (lunarLeapOfYear ? `（农历${ly}年闰${LUNAR_MONTH_NAMES[lunarLeapOfYear - 1]}月）` : `（农历${ly}年无闰月）`) : ''}
+              </span>
+            </label>
+            <FieldError msg={errors.lunar} />
+            {lunarSolar && !errors.lunar && (
+              <p data-testid="lunar-solar-hint" style={{ fontSize: '10px', color: isDark ? 'rgba(180,210,235,0.85)' : 'rgba(100,70,10,0.5)', marginTop: '5px' }}>
+                对应公历：{lunarSolar.year}年{lunarSolar.month}月{lunarSolar.day}日
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ── 出生地点 ── */}
