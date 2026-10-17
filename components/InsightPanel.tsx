@@ -281,7 +281,7 @@ ${selectedSiHua.starName}化${selectedSiHua.siHua}落在【${palaceName}】，�
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ chart, messages: apiMessages }),
       });
-      if (res.status === 404) throw new Error('api-missing');
+      if (res.status === 404 || res.status === 405) throw new Error('api-missing');
       if (!res.ok) throw new Error('请求失败');
       if (!res.body) throw new Error('无响应流');
 

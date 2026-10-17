@@ -47,7 +47,7 @@ export default function ChatPanel({ chart }: ChatPanelProps) {
         body: JSON.stringify({ chart, messages: [...messages, userMsg] }),
       });
 
-      if (res.status === 404) throw new Error('api-missing');
+      if (res.status === 404 || res.status === 405) throw new Error('api-missing');
       if (!res.ok) throw new Error('请求失败');
       if (!res.body) throw new Error('无响应流');
 

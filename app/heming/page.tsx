@@ -117,7 +117,7 @@ export default function HemingPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ chartA: cA, chartB: cB, question: q ?? undefined }),
       });
-      if (res.status === 404) { setApiMissing(true); throw new Error('api-missing'); }
+      if (res.status === 404 || res.status === 405) { setApiMissing(true); throw new Error('api-missing'); }
       if (!res.ok || !res.body) throw new Error();
 
       const reader = res.body.getReader();

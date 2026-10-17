@@ -46,8 +46,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ThemeProvider>
           {children}
         </ThemeProvider>
-        <Analytics />
-        <SpeedInsights />
+        {/* Vercel 统计只在 Vercel 上可用；GitHub Pages 静态版不加载 */}
+        {!process.env.NEXT_PUBLIC_BASE_PATH && <Analytics />}
+        {!process.env.NEXT_PUBLIC_BASE_PATH && <SpeedInsights />}
       </body>
     </html>
   );
