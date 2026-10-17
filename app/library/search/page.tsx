@@ -2,16 +2,24 @@
  * /library/search?q=xxx — 搜索结果页
  */
 
+'use client';
+
+// 客户端读取 ?q=，以便静态导出（GitHub Pages）时也能搜索
 import Link from 'next/link';
+import { Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { searchClassics, getParagraphById } from '@/lib/classics';
 
-export const metadata = {
-  title: '搜索 · 古籍原典库',
-};
+export default function SearchPage() {
+  return (
+    <Suspense fallback={null}>
+      <SearchResults />
+    </Suspense>
+  );
+}
 
-export default async function SearchPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
-  const sp = await searchParams;
-  const q = sp.q?.trim() || '';
+function SearchResults() {
+  const q = useSearchParams().get('q')?.trim() || '';
   const hits = q ? searchClassics(q, 50) : [];
 
   return (

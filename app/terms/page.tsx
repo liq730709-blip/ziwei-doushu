@@ -4,7 +4,7 @@ export default function TermsPage() {
   return (
     <>
       <header style={{ position: 'sticky', top: 0, zIndex: 50, background: 'var(--bg-0)', borderBottom: '1px solid var(--bdr)', padding: '14px 24px', display: 'flex', alignItems: 'center', gap: '16px' }}>
-        <a href="/" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--tx-3)', textDecoration: 'none' }}>
+        <a href={(process.env.NEXT_PUBLIC_BASE_PATH || '') + '/'} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--tx-3)', textDecoration: 'none' }}>
           <span style={{ fontSize: '16px' }}>‹</span>
           <span>返回首页</span>
         </a>
@@ -52,7 +52,7 @@ export default function TermsPage() {
       <p>如有疑问，请通过本平台公布的客服微信 / 邮箱联系。</p>
 
         <p style={{ marginTop: 48, fontSize: 12, color: 'var(--tx-3)' }}>
-          <a href="/privacy" style={{ color: 'var(--ac)' }}>隐私政策</a> · <a href="/" style={{ color: 'var(--ac)' }}>返回首页</a>
+          <a href={(process.env.NEXT_PUBLIC_BASE_PATH || '') + '/privacy'} style={{ color: 'var(--ac)' }}>隐私政策</a> · <a href={(process.env.NEXT_PUBLIC_BASE_PATH || '') + '/'} style={{ color: 'var(--ac)' }}>返回首页</a>
         </p>
       </main>
     </>

@@ -33,7 +33,9 @@ export const dynamicParams = false;
 export async function generateStaticParams() {
   const routes = getAllKnowledgeRoutes();
   // URL 用拼音 slug 替代中文，避开 Vercel/CDN 中文路由边界问题
-  return routes.map(r => ({ star: r.slug, topic: r.topic }));
+  const params = routes.map(r => ({ star: r.slug, topic: r.topic }));
+  // 开源版不含知识库断语数据时列表为空；静态导出要求至少一条，放一个会 404 的占位
+  return params.length > 0 ? params : [{ star: '_', topic: '_' }];
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ star: string; topic: string }> }) {
